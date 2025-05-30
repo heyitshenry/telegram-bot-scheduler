@@ -16,7 +16,7 @@ This plan breaks down the entire MVP into atomic, testable tasks. Each task focu
     id uuid primary key default uuid_generate_v4(),
     group_id text not null,
     group_name text,
-    admin_id uuid references auth.users(id) on delete cascade,
+    admin_id text not null,  -- Telegram user ID of admin
     message text,
     interval_minutes int default 60,
     last_sent_at timestamp,
@@ -28,20 +28,20 @@ This plan breaks down the entire MVP into atomic, testable tasks. Each task focu
 - **Start:** In Supabase UI → Auth → Policies
 - **End:** Add:
   ```sql
-  -- SELECT: only for group owner
+  -- SELECT: only for group admin
   create policy "Admin can read own groups"
-  on groups for select using (auth.uid() = admin_id);
+  on groups for select using (admin_id = auth.uid());
 
-  -- UPDATE: only group owner can update
+  -- UPDATE: only group admin can update
   create policy "Admin can update own groups"
-  on groups for update using (auth.uid() = admin_id);
+  on groups for update using (admin_id = auth.uid());
   ```
 
 ### ✅ Task 4: Set up Supabase service role key (for bot)
 - **Start:** Go to Supabase project settings → API
 - **End:** Copy service role key
 
-## 🔹 PHASE 2: Telegram Bot Base Setup
+## 🔹 PHASE 2: Telegram Bot Setup
 
 ### ✅ Task 5: Create new bot with BotFather
 - **Start:** Message @BotFather on Telegram
@@ -60,71 +60,56 @@ This plan breaks down the entire MVP into atomic, testable tasks. Each task focu
 - **Start:** Add bot.on('new_chat_members') logic
 - **End:** Print/log the group ID and group name
 
-### ✅ Task 8: Create API route /api/add-group.ts
-- **Start:** Create file in /api/add-group.ts
-- **End:** Accept POST with group_id, group_name, admin_id, inserts into Supabase
+### ✅ Task 8: Create group join handler
+- **Start:** Create bot/handlers/groupJoinHandler.ts
+- **End:** When bot joins group:
+  1. Get group info
+  2. Get admin info
+  3. Insert into Supabase groups table
 
-### ✅ Task 9: Update bot to call /api/add-group.ts
-- **Start:** On group join, call POST to above endpoint
-- **End:** Group added to Supabase with correct info
+## 🔹 PHASE 3: Bot Commands
 
-## 🔹 PHASE 3: Next.js Frontend (Auth + Group View)
+### Task 9: Implement /setmessage command
+- **Start:** Create bot/handlers/setMessageHandler.ts
+- **End:** Command:
+  - Only works in groups
+  - Only group admin can use
+  - Updates message in Supabase
+  - Confirms with preview
 
-### ✅ Task 10: Initialize Next.js project in /web
-- **Start:** npx create-next-app@latest
-- **End:** Project scaffolding complete
+### Task 10: Implement /setinterval command
+- **Start:** Create bot/handlers/setIntervalHandler.ts
+- **End:** Command:
+  - Only works in groups
+  - Only group admin can use
+  - Updates interval in Supabase
+  - Confirms with new schedule
 
-### ✅ Task 11: Integrate Supabase client in lib/supabaseClient.ts
-- **Start:** Add Supabase URL + anon key
-- **End:** Client initialized
+### Task 11: Implement /status command
+- **Start:** Create bot/handlers/statusHandler.ts
+- **End:** Command:
+  - Shows current message
+  - Shows current interval
+  - Shows next scheduled message time
 
-### ✅ Task 12: Set up Supabase Auth (email login)
-- **Start:** Use @supabase/auth-helpers-nextjs
-- **End:** Users can log in and get user.id
+## 🔹 PHASE 4: Message Scheduler
 
-### ✅ Task 13: Create protected route /dashboard
-- **Start:** Page checks auth via Supabase session
-- **End:** Redirects if user not logged in
+### Task 12: Create scheduler.ts
+- **Start:** Create bot/scheduler.ts
+- **End:** Function that:
+  1. Gets all groups from Supabase
+  2. Checks which need messages sent
+  3. Sends messages via Telegram API
+  4. Updates last_sent_at
 
-### ✅ Task 14: Fetch groups belonging to logged-in user
-- **Start:** Fetch from Supabase groups table where admin_id = user.id
-- **End:** List of groups rendered
+### Task 13: Set up periodic scheduler
+- **Start:** Add scheduler to bot/index.ts
+- **End:** Runs every minute to check for messages to send
 
-## 🔹 PHASE 4: Message + Interval Configuration
-
-### ✅ Task 15: Create MessageForm component
-- **Start:** Form with:
-  - Textarea for message
-  - Number input for interval (minutes)
-- **End:** On submit, POSTs to /api/update-config.ts
-
-### ✅ Task 16: Create /api/update-config.ts route
-- **Start:** Receives group ID + message + interval
-- **End:** Updates record in Supabase
-
-### ✅ Task 17: Link form to API + test saving config
-- **Start:** Submit new values from frontend
-- **End:** Values update in DB
-
-## 🔹 PHASE 5: Scheduler for Message Delivery
-
-### ✅ Task 18: Create scheduler.ts with sendScheduledMessages() fn
-- **Start:** Function does:
-  - Get all groups
-  - Filter by interval_minutes and last_sent_at
-  - Send messages via Telegram API
-  - Update last_sent_at
-- **End:** Message sent + timestamp updated
-
-### ✅ Task 19: Create /api/trigger-messages.ts route
-- **Start:** Expose sendScheduledMessages() via route
-- **End:** Visiting this runs the scheduler
-
-### ✅ Task 20: Test end-to-end message flow
-- **Start:** Group added → config set → /trigger-messages hit
-- **End:** Message sent to Telegram group
-
-### ✅ Task 21: Set up CRON job (every 5 mins)
-- **Start:** Use Vercel CRON, Supabase Edge Functions, or external CRON
-- **End:** Scheduler runs automatically
+### Task 14: Test end-to-end flow
+- **Start:** Add bot to group
+- **End:** Verify:
+  1. Group added to DB
+  2. Commands work
+  3. Messages sent on schedule
 
